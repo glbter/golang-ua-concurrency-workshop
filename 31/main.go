@@ -20,7 +20,7 @@ type SessionManager struct {
 // Session stores the session's data
 type Session struct {
 	Data map[string]interface{}
-	Expiry int
+	Timer *time.Timer
 }
 
 // NewSessionManager creates a new sessionManager
@@ -29,39 +29,7 @@ func NewSessionManager() *SessionManager {
 		sessions: make(map[string]Session),
 	}
 
-	go m.cleanJob()
 	return m
-}
-
-func (m *SessionManager) cleanJob() {
-	tk := time.NewTicker(time.Second)
-	defer tk.Stop()
-
-	for {
-		select {
-		case <-tk.C:
-			m.cleanUp()
-		}
-	}
-}
-
-func (m *SessionManager) cleanUp() {
-	m.mux.Lock()
-	for k := range m.sessions {
-		v, ok := m.sessions[k]
-		if !ok {
-			continue
-		}
-
-		v.Expiry++
-		if v.Expiry >= 5 {
-			delete(m.sessions, k)
-			continue
-		}
-
-		m.sessions[k] = v
-	}
-	m.mux.Unlock()
 }
 
 
@@ -72,11 +40,10 @@ func (m *SessionManager) CreateSession() (string, error) {
 		return "", err
 	}
 
-
-
 	m.mux.Lock()
 	m.sessions[sessionID] = Session{
 		Data: make(map[string]interface{}),
+		Timer: time.AfterFunc(5*time.Second, m.deleteSession(sessionID)),
 	}
 	m.mux.Unlock()
 
@@ -102,20 +69,29 @@ func (m *SessionManager) GetSessionData(sessionID string) (map[string]interface{
 // UpdateSessionData overwrites the old session data with the new one
 func (m *SessionManager) UpdateSessionData(sessionID string, data map[string]interface{}) error {
 	m.mux.RLock()
-	_, ok := m.sessions[sessionID]
+	oldSession, ok := m.sessions[sessionID]
 	m.mux.RUnlock()
 	if !ok {
 		return ErrSessionNotFound
 	}
 
+	oldSession.Timer.Reset(5*time.Second)
 	m.mux.Lock()
 	m.sessions[sessionID] = Session{
 		Data: data,
-		Expiry: 0,
+		Timer: oldSession.Timer,
 	}
 	m.mux.Unlock()
 
 	return nil
+}
+
+func (m *SessionManager) deleteSession(sessionId string) func() {
+	return func() {
+		m.mux.Lock()
+		delete(m.sessions, sessionId)
+		m.mux.Unlock()
+	}
 }
 
 func main() {
