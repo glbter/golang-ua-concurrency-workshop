@@ -12,3 +12,5 @@ Senior: https://confluence.softserveinc.com/display/SDO/3.6+Concurrency
 ### Usefull links:
 
 https://github.com/golang/go/wiki/LearnConcurrency
+
+forked from https://github.com/GolangUA/workshops/tree/master/concurrency
